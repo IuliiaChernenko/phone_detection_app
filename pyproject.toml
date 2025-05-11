@@ -1,0 +1,19 @@
+[project]
+name = "phone-detection-app"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "PyQt5-Qt5==5.15.2",
+    "PyQt5_sip==12.17.0",
+    "PyQt5==5.15.11",
+    "mss>=10.0.0",
+    "opencv-python>=4.11.0.86",
+    "psutil>=7.0.0",
+    "pyarmor>=9.1.5",
+    "pywin32>=310",
+    "ultralytics>=8.3.120",
+    "scikit-image>=0.25.2",
+    "pyautogui>=0.9.54",
+]

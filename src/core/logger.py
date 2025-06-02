@@ -8,6 +8,7 @@ import queue
 import threading
 import logging
 
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
 logger = logging.getLogger("Logger")
 
 class Logger:
@@ -80,7 +81,8 @@ class Logger:
                     screen_path TEXT,
                     confidence TEXT,
                     active_apps TEXT,
-                    username TEXT
+                    username TEXT,
+                    device TEXT
                 )
             """)
             self.cursor.execute("PRAGMA table_info(logs)")
@@ -95,6 +97,9 @@ class Logger:
             if "username" not in columns:
                 self.cursor.execute("ALTER TABLE logs ADD COLUMN username TEXT")
                 logger.debug("Added username column")
+            if "device" not in columns:
+                self.cursor.execute("ALTER TABLE logs ADD COLUMN device TEXT")
+                logger.debug("Added device column")
             self.conn.commit()
         except sqlite3.Error as e:
             logger.error(f"Error creating/migrating table: {e}")
@@ -108,20 +113,20 @@ class Logger:
         while not self._stop_event.is_set():
             try:
                 task = self.queue.get(timeout=1.0)
-                timestamp, event, frame_path, screen_path, username, confidence, active_apps = task
+                timestamp, event, frame_path, screen_path, username, confidence, active_apps, device = task
 
                 confidence_json = json.dumps(confidence) if confidence is not None else None
                 active_apps_json = json.dumps(active_apps) if active_apps is not None else None
 
-                logger.debug(f"Logging event: event={event}, frame_path={frame_path}, screen_path={screen_path}, confidence={confidence_json}, active_apps={active_apps_json}, username={username}")
+                logger.debug(f"Logging event: event={event}, frame_path={frame_path}, screen_path={screen_path}, confidence={confidence_json}, active_apps={active_apps_json}, username={username}, device={device}")
 
                 try:
                     cursor.execute(
-                        "INSERT INTO logs (timestamp, event, frame_path, screen_path, confidence, active_apps, username) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        (timestamp.replace("_", " "), event, frame_path, screen_path, confidence_json, active_apps_json, username)
+                        "INSERT INTO logs (timestamp, event, frame_path, screen_path, confidence, active_apps, username, device) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (timestamp.replace("_", " "), event, frame_path, screen_path, confidence_json, active_apps_json, username, device)
                     )
                     conn.commit()
-                    logger.debug(f"Event successfully logged to database: id={cursor.lastrowid}, username={username}")
+                    logger.debug(f"Event successfully logged to database: id={cursor.lastrowid}, username={username} on device={device}")
                 except sqlite3.Error as e:
                     logger.warning(f"Error writing to database: {e}")
 
@@ -136,7 +141,10 @@ class Logger:
         conn.close()
         logger.debug("Logger worker thread stopped")
 
-    def log_event(self, event, frame, screen, username, logger_instance, timestamp: str, confidence=None, active_apps=None):
+    def log_event(
+        self, event, frame, screen, username,
+        timestamp: str, confidence=None, active_apps=None,
+        device: str = None):
         """
         Логирование события: сохраняет изображения на диск и передает задачу в очередь.
         """
@@ -178,7 +186,7 @@ class Logger:
         # Помещаем задачу в очередь
         try:
             self.queue.put(
-                (timestamp, event, frame_path, screen_path, username, confidence, active_apps),
+                (timestamp, event, frame_path, screen_path, username, confidence, active_apps, device),
                 timeout=2.0
             )
         except queue.Full:
@@ -205,7 +213,7 @@ class Logger:
             logs = cursor.fetchall()
             logger.debug(f"Loaded {len(logs)} logs from database")
             for log in logs:
-                logger.debug(f"Log: id={log[0]}, timestamp={log[1]}, event={log[2]}, frame_path={log[3]}, screen_path={log[4]}, confidence={log[5]}, active_apps={log[6]}, username={log[7]}")
+                logger.debug(f"Log: id={log[0]}, timestamp={log[1]}, event={log[2]}, frame_path={log[3]}, screen_path={log[4]}, confidence={log[5]}, active_apps={log[6]}, username={log[7]}, device={log[8]}")
             return logs
         except sqlite3.Error as e:
             logger.error(f"Error reading logs from database: {e}")

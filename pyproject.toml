@@ -3,7 +3,7 @@ name = "phone-detection-app"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "~=3.10"
 dependencies = [
     "PyQt5-Qt5==5.15.2",
     "PyQt5_sip==12.17.0",
@@ -13,7 +13,13 @@ dependencies = [
     "psutil>=7.0.0",
     "pyarmor>=9.1.5",
     "pywin32>=310",
-    "ultralytics>=8.3.120",
     "scikit-image>=0.25.2",
     "pyautogui>=0.9.54",
+    "numpy==1.26.4",
+    "onnx>=1.18.0",
+    "onnx-simplifier>=0.4.36",
+    "onnxruntime==1.18.0",
+    "onnxslim>=0.1.52",
+    "requests>=2.32.3",
+    "scipy>=1.15.2",
 ]

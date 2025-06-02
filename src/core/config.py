@@ -3,8 +3,10 @@ import os
 import sys
 import logging
 
+from src.infra.set_admin_only_acess import set_admin_only_access
+
 # Настройка логирования
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(message)s')
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
 logger = logging.getLogger(__name__)
 
 class Config:
@@ -108,6 +110,7 @@ class Config:
             self.config_path = writeable_path  # Обновляем путь для последующих операций
             logger.debug(f"Saved config to: {writeable_path}")
             logger.debug(f"Saved config content: {config}")
+            set_admin_only_access(writeable_path)
         except Exception as e:
             logger.error(f"Error saving config to {writeable_path}: {e}")
 

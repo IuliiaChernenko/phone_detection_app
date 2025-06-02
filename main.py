@@ -11,7 +11,8 @@ def get_resource_path(relative_path):
 
 def main():
     try:
-        app = ApplicationController(model_path=get_resource_path("models/model.pt"))
+        # app = ApplicationController(model_path=get_resource_path("models/model.pt"))
+        app = ApplicationController(model_path=get_resource_path("models/model.onnx"))
         app.start()
         while True:
             time.sleep(1)

@@ -2,6 +2,10 @@ import os
 import sys
 import platform
 from pathlib import Path
+import logging
+
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 APP_NAME = "phone_detection_app"
 
@@ -41,7 +45,7 @@ def enable_autostart(app_name: str, script_path: str):
         shortcut_path = os.path.join(startup_dir, f"{app_name}.lnk")
 
         if os.path.exists(shortcut_path):
-            print(f"[i] Уже в автозагрузке (Windows): {shortcut_path}")
+            logger.debug(f"[i] Уже в автозагрузке (Windows): {shortcut_path}")
             return
 
         shell = win32com.client.Dispatch("WScript.Shell")
@@ -50,14 +54,14 @@ def enable_autostart(app_name: str, script_path: str):
         shortcut.Arguments = f'"{script_path}"'
         shortcut.WorkingDirectory = os.path.dirname(script_path)
         shortcut.save()
-        print(f"[✓] Добавлено в автозагрузку (Windows): {shortcut_path}")
+        logger.debug(f"[✓] Добавлено в автозагрузку (Windows): {shortcut_path}")
 
     elif system == "Linux":
         autostart_dir = Path.home() / ".config" / "autostart"
         desktop_file = autostart_dir / f"{app_name}.desktop"
 
         if desktop_file.exists():
-            print(f"[i] Уже в автозагрузке (Linux): {desktop_file}")
+            logger.debug(f"[i] Уже в автозагрузке (Linux): {desktop_file}")
             return
 
         autostart_dir.mkdir(parents=True, exist_ok=True)
@@ -70,13 +74,13 @@ X-GNOME-Autostart-enabled=true
 Name={app_name}
 """
         desktop_file.write_text(content)
-        print(f"[✓] Добавлено в автозагрузку (Linux): {desktop_file}")
+        logger.debug(f"[✓] Добавлено в автозагрузку (Linux): {desktop_file}")
 
     elif system == "Darwin":
         plist_path = Path.home() / "Library" / "LaunchAgents" / f"{app_name}.plist"
 
         if plist_path.exists():
-            print(f"[i] Уже в автозагрузке (macOS): {plist_path}")
+            logger.debug(f"[i] Уже в автозагрузке (macOS): {plist_path}")
             return
 
         plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -99,7 +103,7 @@ Name={app_name}
         plist_path.parent.mkdir(parents=True, exist_ok=True)
         plist_path.write_text(plist_content)
         os.system(f"launchctl load {plist_path}")
-        print(f"[✓] Добавлено в автозагрузку (macOS): {plist_path}")
+        logger.debug(f"[✓] Добавлено в автозагрузку (macOS): {plist_path}")
 
     else:
         raise NotImplementedError(f"Автозапуск не поддержан для ОС: {system}")
@@ -118,26 +122,26 @@ def disable_autostart(app_name: str):
         shortcut_path = os.path.join(startup_dir, f"{app_name}.lnk")
         if os.path.exists(shortcut_path):
             os.remove(shortcut_path)
-            print(f"[✓] Удалено из автозагрузки (Windows): {shortcut_path}")
+            logger.debug(f"[✓] Удалено из автозагрузки (Windows): {shortcut_path}")
         else:
-            print(f"[i] Автозапуск не найден (Windows)")
+            logger.debug(f"[i] Автозапуск не найден (Windows)")
 
     elif system == "Linux":
         desktop_file = Path.home() / ".config" / "autostart" / f"{app_name}.desktop"
         if desktop_file.exists():
             desktop_file.unlink()
-            print(f"[✓] Удалено из автозагрузки (Linux): {desktop_file}")
+            logger.debug(f"[✓] Удалено из автозагрузки (Linux): {desktop_file}")
         else:
-            print(f"[i] Автозапуск не найден (Linux)")
+            logger.debug(f"[i] Автозапуск не найден (Linux)")
 
     elif system == "Darwin":
         plist_path = Path.home() / "Library" / "LaunchAgents" / f"{app_name}.plist"
         if plist_path.exists():
             os.system(f"launchctl unload {plist_path}")
             plist_path.unlink()
-            print(f"[✓] Удалено из автозагрузки (macOS): {plist_path}")
+            logger.debug(f"[✓] Удалено из автозагрузки (macOS): {plist_path}")
         else:
-            print(f"[i] Автозапуск не найден (macOS)")
+            logger.debug(f"[i] Автозапуск не найден (macOS)")
 
     else:
         raise NotImplementedError(f"ОС не поддерживается: {system}")

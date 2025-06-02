@@ -2,6 +2,10 @@ import requests
 from datetime import datetime
 from io import BytesIO
 import cv2
+import logging
+
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN = "8024143683:AAEIdfSrzRQW9qfUA0-BaDNAUnwuFf3VQHc"
 ALL_CHAT_IDS = [-1002539322922]     # получатели CRITICAL и RECOVERY
@@ -76,13 +80,13 @@ def send_notification(recipients, status, message_text, username, pc_name: str, 
             }
         )
         if not response.ok:
-            print(f"[Ошибка] Текст в {chat_id}: {response.text}")
+            logger.warning(f"[Ошибка] Текст в {chat_id}: {response.text}")
 
     # Отправляем изображения
     for img in images:
         success, encoded_image = cv2.imencode('.jpg', img)
         if not success:
-            print("[Ошибка] Не удалось закодировать изображение")
+            logger.warning("[Ошибка] Не удалось закодировать изображение")
             continue
         img_bytes = BytesIO(encoded_image.tobytes())
 
@@ -94,7 +98,7 @@ def send_notification(recipients, status, message_text, username, pc_name: str, 
                 files={'photo': ('image.jpg', img_bytes, 'image/jpeg')}
             )
             if not response.ok:
-                print(f"[Ошибка] Картинка в {chat_id}: {response.text}")
+                logger.warning(f"[Ошибка] Картинка в {chat_id}: {response.text}")
         img_bytes.close()
 
 

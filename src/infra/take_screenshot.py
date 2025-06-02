@@ -71,6 +71,10 @@ import time
 import sys
 sys.path.append(r'D:\start_point\projects\phone_detection_app')
 from src.core.lock_screen import lock_screen
+import logging
+
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 
 def take_screenshot() -> np.ndarray:
@@ -85,7 +89,7 @@ def take_screenshot() -> np.ndarray:
         screenshot = sct.grab(sct.monitors[0])  # монитор[0] — это весь экран
         img = np.array(screenshot)  # BGRA формат
         img_bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)  # убираем альфа-канал
-        print('img_bgr')
+        logger.debug('img_bgr')
     time.sleep(0.01)
     return np.array(img_bgr)
 

@@ -1,6 +1,10 @@
 import platform
 import pyautogui
 import time
+import logging
+
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 def minimize_all_windows():
     system = platform.system().lower()
@@ -11,6 +15,8 @@ def minimize_all_windows():
     if system == "windows":
         # Win + D для сворачивания всех окон
         pyautogui.hotkey("win", "d")
+        pyautogui.PAUSE = 0.02
+        pyautogui.hotkey("win", "m")
     elif system == "darwin":  # macOS
         # Command + Option + M или F11 для macOS
         pyautogui.hotkey("command", "option", "m")
@@ -19,7 +25,7 @@ def minimize_all_windows():
         # Ctrl + Alt + D для GNOME (может отличаться для других окружений)
         pyautogui.hotkey("ctrl", "alt", "d")
     else:
-        print("Операционная система не поддерживается")
+        logger.warning("Операционная система не поддерживается")
 
 if __name__ == "__main__":
     # Даём время переключиться на нужное окно

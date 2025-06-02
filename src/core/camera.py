@@ -1,6 +1,10 @@
 import cv2
 import time
 import win32com.client
+import logging
+
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
+logger = logging.getLogger(__name__)
 
 class Camera:
     def __init__(self, device_id=0):
@@ -9,20 +13,20 @@ class Camera:
             self.cap = cv2.VideoCapture(device_id, cv2.CAP_ANY)
             if not self.cap.isOpened():
                 raise Exception(f"Не удалось открыть камеру с ID {device_id}")
-            print(f"DEBUG: Камера {device_id} открыта")
+            logger.debug(f"DEBUG: Камера {device_id} открыта")
         except Exception as e:
-            print(f"DEBUG: Ошибка инициализации камеры {device_id}: {e}")
+            logger.debug(f"DEBUG: Ошибка инициализации камеры {device_id}: {e}")
             raise
 
     def get_frame(self):
         try:
             ret, frame = self.cap.read()
             if not ret:
-                print(f"DEBUG: Не удалось получить кадр с камеры {self.device_id}")
+                logger.debug(f"DEBUG: Не удалось получить кадр с камеры {self.device_id}")
                 return None
             return frame
         except Exception as e:
-            print(f"DEBUG: Ошибка получения кадра: {e}")
+            logger.debug(f"DEBUG: Ошибка получения кадра: {e}")
             return None
 
     def is_uniform(self, frame):
@@ -32,19 +36,19 @@ class Camera:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             variance = cv2.meanStdDev(gray)[1][0][0]
             is_uniform = variance < 10
-            print(f"DEBUG: Проверка однотонности: variance={variance}, is_uniform={is_uniform}")
+            logger.debug(f"DEBUG: Проверка однотонности: variance={variance}, is_uniform={is_uniform}")
             return is_uniform
         except Exception as e:
-            print(f"DEBUG: Ошибка проверки однотонности: {e}")
+            logger.debug(f"DEBUG: Ошибка проверки однотонности: {e}")
             return False
 
     def release(self):
         try:
             if hasattr(self, 'cap') and self.cap is not None:
                 self.cap.release()
-                print(f"DEBUG: Камера {self.device_id} освобождена")
+                logger.debug(f"DEBUG: Камера {self.device_id} освобождена")
         except Exception as e:
-            print(f"DEBUG: Ошибка освобождения камеры: {e}")
+            logger.debug(f"DEBUG: Ошибка освобождения камеры: {e}")
 
     @staticmethod
     def list_available_cameras():
@@ -66,10 +70,10 @@ class Camera:
                                 device_name = device.Name or f"Камера {i}"
                                 break
                         cameras.append((i, device_name))
-                        print(f"DEBUG: Найдена камера: ID={i}, Name={device_name}")
+                        logger.debug(f"DEBUG: Найдена камера: ID={i}, Name={device_name}")
                     cap.release()
                 else:
-                    print(f"DEBUG: Камера с ID {i} не открыта")
+                    logger.debug(f"DEBUG: Камера с ID {i} не открыта")
             except Exception as e:
-                print(f"DEBUG: Ошибка проверки камеры {i}: {e}")
+                logger.debug(f"DEBUG: Ошибка проверки камеры {i}: {e}")
         return cameras

@@ -3,30 +3,29 @@ import sys
 import cv2
 import numpy as np
 import logging
-from PyQt5.QtCore import QThread, pyqtSignal, QCoreApplication
-from PyQt5.QtWidgets import QApplication, QMessageBox
 import time
+import threading
 
 import platform
 import getpass
-from src.core.camera import Camera
 from src.core.detector import Detector
 from src.core.lock_screen import lock_screen, is_screen_locked, wait_for_unlock
 from src.core.logger import Logger
 from src.core.config import Config
-from src.core.error_window import ErrorWindow
 from src.core.system_info import get_active_apps
 from src.infra.take_screenshot import take_screenshot
-from src.infra.send_tg_alert import send_notification, notify_async
+from src.infra.send_tg_alert import notify_async
 from src.infra.minimize_all import minimize_all_windows
 from src.infra.set_admin_only_acess import set_admin_only_access
-from PyQt5.QtWidgets import QApplication, QMessageBox
-from PyQt5.QtCore import Qt
 from skimage.metrics import structural_similarity as ssim
 from datetime import datetime
+from PyQt5.QtWidgets import QApplication
+
+from src.infra.is_admin import is_admin, get_run_path
+from src.infra.critical_error import critical_error
 
 # Настройка логирования
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s:%(message)s')
+logging.basicConfig(level=logging.CRITICAL+1, format='%(asctime)s %(levelname)s:%(message)s')
 logger = logging.getLogger("UserApp")
 
 import time
@@ -36,6 +35,7 @@ import threading
 import time
 import cv2
 import signal
+import ctypes
 # import queue
 from typing import Optional
 
@@ -212,7 +212,10 @@ class ApplicationController:
     """
     def __init__(self, model_path: str) -> None:
         self.app = QApplication(sys.argv)
-        self.error_window = ErrorWindow()
+        self.logger = Logger()  # Без явного пути, Logger сам управляет
+        # set_admin_only_access(get_run_path())
+        if not is_admin():
+            critical_error(logger)
         self.config = Config()
         self.phone_limit = self.config.get("phone_limit")
         try:
@@ -227,8 +230,7 @@ class ApplicationController:
                 warmup_seconds=2,
                 max_fps=self.fps,
             )
-            self.logger = Logger()  # Без явного пути, Logger сам управляет
-            # set_admin_only_access("logs")
+            set_admin_only_access("logs")
             self._loop_thread = threading.Thread(target=self._main_loop, daemon=True)
             self._stop_event = threading.Event()
             signal.signal(signal.SIGTERM, self.handle_termination)
@@ -239,50 +241,6 @@ class ApplicationController:
             if self.config.get("lock_events")["camera_lost"]:
                 lock_screen()
             sys.exit(1)
-
-    # def __init__(self, model_path: str) -> None:
-    #     self.app = QApplication(sys.argv)  # For QMessageBox
-    #     self.error_window = ErrorWindow()
-    #     self.config = Config()
-        
-    #     try:
-    #         self.window_name = "Stream"
-    #         self.fps = self.config.get("fps")
-    #         self.camera_id = self.config.get("camera_id")
-    #         self.confidence_threshold = self.config.get("confidence_threshold")
-    #         self.min_step_time = 0.5 / self.fps
-            
-    #         self.detector = Detector(model_path=model_path)
-    #         self.camera = CameraStream(
-    #             source=self.camera_id,
-    #             warmup_seconds=2,
-    #             max_fps=self.fps,
-    #         )
-    #         self.logger = Logger(get_resource_path("logs/detection_log.db"))
-    #         # set_admin_only_access("logs")
-    #         self._loop_thread = threading.Thread(target=self._main_loop, daemon=True)
-    #         self._stop_event = threading.Event()
-            
-            
-    #         signal.signal(signal.SIGTERM, self.handle_termination)
-    #         signal.signal(signal.SIGINT, self.handle_termination)
-    #         logger.debug(f"Initialized UserApp: camera_id={self.config.get('camera_id')}, fps={self.fps}, confidence={self.confidence_threshold}")
-    #     except Exception as e:
-    #         logger.critical(f"Error initializing camera: {e}")
-    #         if self.config.get("lock_events")["camera_lost"]:
-    #             lock_screen()
-    #         sys.exit(1)
-            
-    def show_alert(self, message):
-        if not self.config.get("notifications_enabled"):
-            return
-        msg = QMessageBox()
-        msg.setWindowFlags(Qt.WindowStaysOnTopHint)
-        msg.setWindowTitle("Оповещение")
-        msg.setText(message)
-        msg.setStandardButtons(QMessageBox.Ok)
-        msg.exec_()
-        logger.debug(f"Showed alert: {message}")
         
     def handle_termination(self, signum, frame):
         logger.debug("Detected attempt to terminate process")
@@ -322,10 +280,10 @@ class ApplicationController:
         if frame is not None and bbox is not None and event == "Обнаружен мобильный телефон":
             x1, y1, x2, y2 = bbox
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, "Phone", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            cv2.putText(frame, "Phone", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         if log_enable:
             logger.debug("log_enable - true")
-            self.logger.log_event(event, frame, screen, username, logger, timestamp, confs, active_apps=active_apps)
+            self.logger.log_event(event, frame, screen, username, timestamp, confs, active_apps=active_apps, device=pc_name)
         else:
             logger.debug("log_enable - false")
         
@@ -335,7 +293,7 @@ class ApplicationController:
             except Exception as e:
                 logger.warning(e)
             lock_screen()
-            print(f"Время выполнения: {time.perf_counter() - self.start_time:.6f} секунд")
+            logger.debug(f"Время выполнения: {time.perf_counter() - self.start_time:.6f} секунд")
             range_v = 20
             sleep_v = 0.2
             for _ in range(20):
@@ -343,10 +301,8 @@ class ApplicationController:
                     break
                 time.sleep(0.2)
             else:
-                print(f"[App] Предупреждение: экран не заблокировался в течение {range_v * sleep_v} секунд")
+                logger.debug(f"[App] Предупреждение: экран не заблокировался в течение {range_v * sleep_v} секунд")
             
-        
-        # self.show_alert(event)
         if notifications_enabled:
             notify_async(
                 list(map(int, self.config.get("telegram_ids"))),
@@ -360,7 +316,7 @@ class ApplicationController:
             )
             
     def start(self) -> None:
-        print("[App] Запуск камеры и логики анализа...")
+        logger.debug("[App] Запуск камеры и логики анализа...")
         self.camera.start()
 
         if self.camera.is_camera_lost():
@@ -377,7 +333,7 @@ class ApplicationController:
         self._loop_thread.start()
 
     def stop(self) -> None:
-        print("[App] Остановка приложения...")
+        logger.debug("[App] Остановка приложения...")
         self._stop_event.set()
         self.camera.stop()
         
@@ -399,14 +355,16 @@ class ApplicationController:
         last_frame = None
         last_unique_frame_time = time.time()
         while not self._stop_event.is_set():
-            # print(1)
             step_start = time.perf_counter()
             if is_screen_locked():
-                print("is_screen_locked", is_screen_locked())
-                print("[App] Обнаружена блокировка экрана. Ставим на паузу.")
+                logger.debug("is_screen_locked", is_screen_locked())
+                logger.debug("[App] Обнаружена блокировка экрана. Ставим на паузу.")
                 self.camera.pause()
+                # thread = threading.Thread(target=wait_for_unlock, daemon=True, name='wait for unlock')
+                # thread.start()
+                # thread.join()
                 wait_for_unlock()
-                print("[App] Разблокировано. Продолжаем работу.")
+                logger.debug("[App] Разблокировано. Продолжаем работу.")
                 self.camera.resume()
                 # if status_continued["camera_lost"]:
                 #     try:
@@ -418,7 +376,6 @@ class ApplicationController:
                 #         continue
                 # else:
                 #     self.camera.resume()
-                #     print("resume end")
             
             if self.camera.is_camera_lost():
                 if not status_continued["camera_lost"]:
@@ -489,6 +446,7 @@ class ApplicationController:
                     )
                     status_continued["uniform_image"] = False
             
+            frame = self.detector.prepreprocess(frame=frame)
             now = time.time()
             if last_frame is not None and is_similar_frame(frame, last_frame):
                 if not status_continued["static_img"]:
@@ -521,7 +479,10 @@ class ApplicationController:
                     status_continued["static_img"] = False
 
             # Обработка YOLO
-            found, bbox, confs = self.detector.detect_phone(frame, conf=self.confidence_threshold)
+            found, bbox, confs = self.detector.detect_phone(
+                cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                conf=self.confidence_threshold
+            )
             if found:
                 phone_count += 1
                 if phone_count >= self.phone_limit:
@@ -553,191 +514,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         app.stop()
 
-
-# import cv2
-# import signal
-# import sys
-# import time
-# import getpass
-# import numpy as np
-# from src.core.camera import Camera
-# from src.core.detector import Detector
-# from src.core.lock_screen import lock_screen, is_screen_locked, wait_for_unlock
-# from src.core.logger import Logger
-# from src.core.config import Config
-# from src.core.error_window import ErrorWindow
-# from src.core.system_info import get_active_apps
-# from src.infra.take_screenshot import take_screenshot
-# from src.infra.send_tg_alert import send_notification
-# from PyQt5.QtWidgets import QApplication, QMessageBox
-# from PyQt5.QtCore import Qt
-# from skimage.metrics import structural_similarity as ssim
-# from datetime import datetime
-
-# class UserApp:
-#     def __init__(self):
-#         self.app = QApplication(sys.argv)  # For QMessageBox
-#         self.config = Config()
-#         self.first_run = True
-#         try:
-#             self.camera = Camera(device_id=self.config.get("camera_id"))
-#             self.detector = Detector("models/model.pt")
-#             self.logger = Logger("logs/detection_log.db")
-#             self.fps = self.config.get("fps")
-#             self.confidence_threshold = self.config.get("confidence_threshold")
-#             self.error_window = ErrorWindow()
-#             self.window_name = "Stream"
-#             signal.signal(signal.SIGTERM, self.handle_termination)
-#             signal.signal(signal.SIGINT, self.handle_termination)
-#             print(f"DEBUG: Initialized UserApp: camera_id={self.config.get('camera_id')}, fps={self.fps}, confidence={self.confidence_threshold}")
-#         except Exception as e:
-#             print(f"DEBUG: Error initializing camera: {e}")
-#             self.show_alert("Камера не найдена")
-#             if self.config.get("lock_events")["camera_lost"] and not self.first_run:
-#                 lock_screen()
-#             sys.exit(1)
-
-#     def show_alert(self, message):
-#         if True or not self.config.get("notifications_enabled"):
-#             return
-#         msg = QMessageBox()
-#         msg.setWindowFlags(Qt.WindowStaysOnTopHint)
-#         msg.setWindowTitle("Оповещение")
-#         msg.setText(message)
-#         msg.setStandardButtons(QMessageBox.Ok)
-#         msg.exec_()
-#         print(f"DEBUG: Showed alert: {message}")
-
-#     def handle_termination(self, signum, frame):
-#         print("DEBUG: Detected attempt to terminate process")
-#         active_apps = get_active_apps()
-#         print(f"DEBUG: Active apps on termination: {active_apps}")
-#         frame = self.camera.get_frame() if self.camera.cap.isOpened() else None
-#         if self.config.get("log_events")["attempt_to_close"]:
-#             self.logger.log_event("Попытка закрыть приложение", frame, active_apps=active_apps)
-#         if self.config.get("lock_events")["attempt_to_close"]:
-#             lock_screen()
-#         print("DEBUG: Terminating")
-#         self.camera.release()
-#         cv2.destroyAllWindows()
-#         sys.exit(0)
-
-#     def run(self):
-#         status_continued = {
-#             "uniform_image": False,
-#             "static_img": False,
-#         }
-#         last_frame = None
-#         last_unique_frame_time = time.time()
-#         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-#         while True:
-#             if is_screen_locked():
-#                 print("DEBUG: Screen locked, pausing analysis")
-#                 wait_for_unlock()
-#                 cv2.destroyWindow(self.window_name)
-#                 cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-#                 print("DEBUG: OpenCV window recreated after unlock")
-#                 continue
-#             # screen = take_screenshot()
-
-#             print("DEBUG: Capturing new frame")
-#             frame = self.camera.get_frame()
-#             now = time.time()
-#             if last_frame is not None and is_similar_frame(frame, last_frame):
-#                 if not status_continued["static_img"]:
-#                     if now - last_unique_frame_time > 30:
-#                         print("DEBUG: Frame frozen for >30s, triggering lock")
-#                         active_apps = get_active_apps()
-#                         self.show_alert("Изображение не меняется 30 секунд (камера зависла?)")
-#                         if self.config.get("log_events")["static_img"]:
-#                             self.logger.log_event("Зависшее изображение", frame, take_screenshot, active_apps=active_apps)
-#                         if self.config.get("lock_events")["static_img"]:
-#                             lock_screen()
-#                         status_continued["static_img"] = True
-#                         continue
-#             else:
-#                 last_unique_frame_time = now
-#                 last_frame = frame.copy()
-#                 if status_continued["static_img"]:
-#                     self.show_alert("Изображение изменилось после зависания")
-#                     if self.config.get("log_events")["static_img"]:
-#                         self.logger.log_event("Изображение отвисло", frame, take_screenshot, active_apps=active_apps)
-#                     status_continued["static_img"] = False
-            
-#             if frame is None:
-#                 print("DEBUG: Camera connection lost")
-#                 active_apps = get_active_apps()
-#                 print(f"DEBUG: Active apps on camera loss: {active_apps}")
-#                 self.show_alert("Потеря связи с камерой")
-#                 if self.config.get("log_events")["camera_lost"]:
-#                     self.logger.log_event("Потеря связи с камерой", frame, take_screenshot, active_apps=active_apps)
-#                 if self.config.get("lock_events")["camera_lost"] and not self.first_run:
-#                     lock_screen()
-#                 continue
-
-#             if self.camera.is_uniform(frame):
-#                 if not status_continued["uniform_image"]:
-#                     print("DEBUG: Uniform image detected")
-#                     active_apps = get_active_apps()
-#                     print(f"DEBUG: Active apps on uniform image: {active_apps}")
-#                     self.show_alert("Обнаружено однотонное изображение (камера закрыта)")
-#                     if self.config.get("log_events")["uniform_image"]:
-#                         self.logger.log_event("Однотонное изображение", frame, take_screenshot, active_apps=active_apps)
-#                     if self.config.get("lock_events")["uniform_image"] and not self.first_run:
-#                         lock_screen()
-#                     status_continued["uniform_image"] = True
-#                     continue
-#             elif status_continued["uniform_image"]:
-#                 self.show_alert("Однотонность пропала")
-#                 if status_continued["uniform_image"]:
-#                     self.show_alert("Однотонность прошла (камера открыта)")
-#                     if self.config.get("log_events")["uniform_image"]:
-#                         self.logger.log_event("После однотонного изображения", frame, take_screenshot, active_apps=active_apps)
-#                     status_continued["uniform_image"] = False
-
-#             print("DEBUG: Performing phone detection")
-#             phone_detected, box, confidences = self.detector.detect_phone(frame, conf=self.confidence_threshold)
-#             if phone_detected:
-#                 print("DEBUG: Phone detected")
-#                 active_apps = get_active_apps()
-#                 print(f"DEBUG: Confidences: {confidences}, Active apps: {active_apps}")
-#                 self.show_alert("Обнаружен мобильный телефон")
-#                 if self.config.get("notifications_enabled"):
-#                     print("-" * 50)
-#                     send_notification(
-#                         "CRITICAL",
-#                         "Обнаружен мобильный телефон",
-#                         getpass.getuser(),
-#                         [frame, take_screenshot()],
-#                         datetime.now().strftime("%Y-%m-%d_%H-%M-%S"),
-#                         {},
-#                     )
-#                 if self.config.get("log_events")["phone_detected"]:
-#                     self.logger.log_event("Обнаружен мобильный телефон", frame, take_screenshot, box=box, confidence=confidences, active_apps=active_apps)
-#                 if self.config.get("lock_events")["phone_detected"]:
-#                     lock_screen()
-#                 continue
-
-#             print("DEBUG: Displaying frame")
-#             cv2.imshow(self.window_name, frame)
-#             print("DEBUG: Waiting for key press")
-#             key = cv2.waitKey(int(1000 / self.fps))
-#             if key & 0xFF == ord("q"):
-#                 print("DEBUG: 'q' key pressed, logging attempt to close")
-#                 active_apps = get_active_apps()
-#                 print(f"DEBUG: Active apps on 'q' press: {active_apps}")
-#                 if self.config.get("log_events")["attempt_to_close"]:
-#                     self.logger.log_event("Попытка закрыть приложение", frame, take_screenshot, active_apps=active_apps)
-#                 if self.config.get("lock_events")["attempt_to_close"]:
-#                     lock_screen()
-#                 print("DEBUG: 'q' key pressed, terminating")
-#                 break
-#             print(f"DEBUG: Key code: {key}")
-
-#         print("DEBUG: Terminating, releasing resources")
-#         self.first_run = False
-#         self.camera.release()
-#         cv2.destroyAllWindows()
 
 def is_uniform(frame):
     try:
@@ -774,11 +550,11 @@ def is_similar_frame(frame1: np.ndarray, frame2: np.ndarray,
 
     # Считаем SSIM
     similarity, _ = ssim(gray1, gray2, full=True)
-    print(f"DEBUG: SSIM similarity = {similarity:.4f}")
+    logger.debug(f"DEBUG: SSIM similarity = {similarity:.4f}")
 
     # Альтернативный способ: среднее абсолютное отклонение
     mean_diff = np.mean(cv2.absdiff(gray1, gray2))
-    print(f"DEBUG: Mean gray-level difference = {mean_diff:.2f}")
+    logger.debug(f"DEBUG: Mean gray-level difference = {mean_diff:.2f}")
 
     # Оба условия должны выполняться, чтобы считать кадры "похожими"
     return similarity >= ssim_threshold and mean_diff <= mean_diff_threshold

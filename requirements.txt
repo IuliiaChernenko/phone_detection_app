@@ -1,6 +1,0 @@
-opencv-python
-ultralytics
-pywin32
-PyQt5
-pyarmor
-psutil
